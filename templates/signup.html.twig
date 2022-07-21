@@ -1,0 +1,9 @@
+{% extends 'layout.html.twig' %}
+
+{% block body %}
+    {% set url = frontend_url('signup/confirm', {'token': token.value} ) %}
+
+    <p>Hi {{ name }},<p/>
+    <p>thank you for signing up. Please click the link below to confirm your email and log in to your new account:</p>
+    <a class="button" href="{{ url }}">Confirm email address</a>
+{% endblock %}

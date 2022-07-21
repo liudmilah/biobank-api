@@ -1,0 +1,103 @@
+version: "3.9"
+services:
+  bb-api:
+    image: ${REGISTRY}/bb-api:${IMAGE_TAG}
+    networks:
+      - traefik-public
+      - default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-public
+      - traefik.http.routers.bb-api.rule=Host(`api.biobank.by`)
+      - traefik.http.services.bb-api.loadBalancer.server.port=80
+      - traefik.http.routers.bb-api.middlewares=secure-headers
+      - traefik.http.routers.bb-api.entryPoints=https
+      - traefik.http.routers.bb-api.tls=true
+      - traefik.http.routers.bb-api.tls.certResolver=letsEncrypt
+
+  bb-api-php-fpm:
+    image: ${REGISTRY}/bb-api-php-fpm:${IMAGE_TAG}
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: 0
+      DB_HOST: bb-api-postgres
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      MAILER_HOST: ${MAILER_HOST}
+      MAILER_PORT: ${MAILER_PORT}
+      MAILER_USERNAME: ${MAILER_USERNAME}
+      MAILER_PASSWORD: ${MAILER_PASSWORD}
+      MAILER_ENCRYPTION: tls
+      MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL}
+      FRONTEND_URL: https://biobank.by
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: bb-cache
+      REDIS_PORT: 6379
+      CACHE_PASSWORD: ${CACHE_PASSWORD}
+      CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_URL: http://bb-centrifugo:8000/api
+
+  bb-api-migration:
+    image: ${REGISTRY}/bb-api-php-cli:${IMAGE_TAG}
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: 0
+      DB_HOST: bb-api-postgres
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
+      MAILER_HOST: ${MAILER_HOST}
+      MAILER_PORT: ${MAILER_PORT}
+      MAILER_USERNAME: ${MAILER_USERNAME}
+      MAILER_PASSWORD: ${MAILER_PASSWORD}
+      MAILER_ENCRYPTION: tls
+      MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL}
+      FRONTEND_URL: https://biobank.by
+      JWT_SECRET: ${JWT_SECRET}
+      REDIS_HOST: bb-cache
+      REDIS_PORT: 6379
+      CACHE_PASSWORD: ${CACHE_PASSWORD}
+    command: sh -c 'wait-for-it bb-api-postgres:5432 -t 60 && php bin/app.php migrations:migrate --no-interaction'
+
+  bb-api-postgres:
+    build:
+      context: docker
+      dockerfile: common/postgres/Dockerfile
+    environment:
+        POSTGRES_USER: ${DB_USER}
+        POSTGRES_PASSWORD: ${DB_PASSWORD}
+        POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - bb-api-postgres:/var/lib/postgresql/data
+
+  bb-cache:
+    image: redis:6.2.6-alpine
+    restart: always
+    environment:
+      - CACHE_PASSWORD=${CACHE_PASSWORD}
+    volumes:
+      - cache:/data
+
+  bb-centrifugo:
+    image: centrifugo/centrifugo
+    command: centrifugo --health
+    networks:
+      - traefik-public
+      - default
+    environment:
+      CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_SECRET}
+      CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+      CENTRIFUGO_ALLOWED_ORIGINS: ${FRONTEND_URL}
+    ports:
+      - '8011:8000'
+    restart: always
+
+volumes:
+  bb-api-postgres:
+  cache:
+
+networks:
+  traefik-public:
+    external: true

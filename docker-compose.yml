@@ -1,0 +1,136 @@
+version: "3.9"
+services:
+    bb-api:
+        build:
+            context: docker
+            dockerfile: development/nginx/Dockerfile
+        volumes:
+            - .:/app
+        networks:
+            - traefik-public
+            - default
+        labels:
+            - traefik.enable=true
+            - traefik.docker.network=traefik-public
+            - traefik.http.routers.bb-api.rule=Host(`bb-api.localhost`)
+            - traefik.http.routers.bb-api.entryPoints=http
+
+    bb-api-php-fpm:
+        build:
+            context: docker
+            dockerfile: development/php-fpm/Dockerfile
+        environment:
+            APP_ENV: dev
+            APP_DEBUG: 1
+            PHP_IDE_CONFIG: serverName=API
+            DB_HOST: bb-api-postgres
+            DB_USER: ${DB_USER}
+            DB_PASSWORD: ${DB_PASSWORD}
+            DB_NAME: ${DB_NAME}
+            MAILER_HOST: ${MAILER_HOST}
+            MAILER_PORT: ${MAILER_PORT}
+            MAILER_USERNAME: ${MAILER_USERNAME}
+            MAILER_PASSWORD: ${MAILER_PASSWORD}
+            MAILER_ENCRYPTION: tcp
+            MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL}
+            FRONTEND_URL: ${FRONTEND_URL}
+            JWT_SECRET: ${JWT_SECRET}
+            REDIS_HOST: bb-cache
+            REDIS_PORT: 6379
+            CACHE_PASSWORD: ${CACHE_PASSWORD}
+            CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+            CENTRIFUGO_URL: http://bb-centrifugo:8000/api
+        volumes:
+            - .:/app
+
+    bb-api-php-cli:
+        build:
+            context: docker
+            dockerfile: development/php-cli/Dockerfile
+        environment:
+            APP_ENV: dev
+            APP_DEBUG: 1
+            PHP_IDE_CONFIG: serverName=API
+            DB_HOST: bb-api-postgres
+            DB_USER: ${DB_USER}
+            DB_PASSWORD: ${DB_PASSWORD}
+            DB_NAME: ${DB_NAME}
+            MAILER_HOST: ${MAILER_HOST}
+            MAILER_PORT: ${MAILER_PORT}
+            MAILER_USERNAME: ${MAILER_USERNAME}
+            MAILER_PASSWORD: ${MAILER_PASSWORD}
+            MAILER_ENCRYPTION: tcp
+            MAILER_FROM_EMAIL: ${MAILER_FROM_EMAIL}
+            FRONTEND_URL: ${FRONTEND_URL}
+            JWT_SECRET: ${JWT_SECRET}
+            REDIS_HOST: bb-cache
+            REDIS_PORT: 6379
+            CACHE_PASSWORD: ${CACHE_PASSWORD}
+            CENTRIFUGO_SECRET: ${CENTRIFUGO_SECRET}
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+            CENTRIFUGO_URL: http://bb-centrifugo:8000/api
+        volumes:
+            - .:/app
+
+    bb-api-postgres:
+        build:
+            context: docker
+            dockerfile: common/postgres/Dockerfile
+        environment:
+            POSTGRES_USER: ${DB_USER}
+            POSTGRES_PASSWORD: ${DB_PASSWORD}
+            POSTGRES_DB: ${DB_NAME}
+        volumes:
+            - bb-api-postgres:/var/lib/postgresql/data
+        ports:
+            - "54321:5432"
+
+    bb-mailer:
+        image: mailhog/mailhog
+        networks:
+            - traefik-public
+            - default
+        labels:
+            - traefik.enable=true
+            - traefik.docker.network=traefik-public
+            - traefik.http.routers.bb-mailer.rule=Host(`bb-mailer.localhost`)
+            - traefik.http.routers.bb-mailer.entryPoints=http
+            - traefik.http.services.bb-mailer.loadBalancer.server.port=8025
+
+    bb-cache:
+        image: redis:6.2.6-alpine
+        restart: always
+        environment:
+            - CACHE_PASSWORD=${CACHE_PASSWORD}
+        command: redis-server --requirepass ${CACHE_PASSWORD}
+        volumes:
+            - cache:/data
+
+    bb-centrifugo:
+        build:
+            context: docker
+            dockerfile: common/centrifugo/Dockerfile
+        command: centrifugo --health
+        networks:
+            - traefik-public
+            - default
+        environment:
+            CENTRIFUGO_LOG_LOVEL: "debug"
+            CENTRIFUGO_TOKEN_HMAC_SECRET_KEY: ${CENTRIFUGO_SECRET}
+            CENTRIFUGO_API_KEY: ${CENTRIFUGO_API_KEY}
+            CENTRIFUGO_DEBUG: "true"
+            CENTRIFUGO_ADMIN: "true"
+            CENTRIFUGO_ADMIN_INSECURE: "true"
+            CENTRIFUGO_ALLOWED_ORIGINS: ${FRONTEND_URL}
+        ports:
+            - '8011:8000'
+        restart: always
+
+volumes:
+    bb-api-postgres:
+    cache:
+
+networks:
+  traefik-public:
+    external: true
